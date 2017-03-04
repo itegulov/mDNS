@@ -54,7 +54,7 @@ final case class MDNSNode(
       val msg = NewPeerAlive(name, addr)
       sender ! Udp.Send(ByteString(msg.toString), new InetSocketAddress(group, port))
       log.info(s"Sending UDP-multicase message with self info.")
-      sender ! PoisonPill
+//      sender ! PoisonPill
     case Udp.CommandFailed(_: Udp.Bind) =>
       log.error(s"Failed to bind to UDP multicast group.")
       context stop self
@@ -129,7 +129,7 @@ final case class MDNSNode(
         response.onComplete {
           case Failure(_) =>
             send ! Close
-            context.parent ! PeerDied(remoteName)
+//            context.parent ! PeerDied(remoteName)
             context stop self
           case Success(s) =>
             log.info(s"Got response from remote $s.")
