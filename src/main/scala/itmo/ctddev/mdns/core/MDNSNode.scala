@@ -113,14 +113,14 @@ final case class MDNSNode(
     private case object Tick
     private case object Timeout
 
-    context.system.scheduler.schedule(0 millis, 10 seconds, self, Timeout)
 
     override def receive: Receive = {
       case Connected(remoteAddress, localAddress) =>
         sender ! Register(self)
         sender ! Write(ByteString(msg.toString))
         sender ! Close
-        context.become(ready(sender))
+        context.system.scheduler.schedule(0 millis, 10 seconds, self, Timeout)
+        context.become(ready)
       case CommandFailed(_: Connect) =>
         log.error(s"Failed to connect to remote node $remoteName @ $remoteAddr.")
         context stop self
@@ -128,7 +128,7 @@ final case class MDNSNode(
     
     private[this] var isAlive = true
 
-    private def ready(send: ActorRef): Receive = {
+    private def ready: Receive = {
       case Tick =>
         manager ! Connect(remoteAddr)
       case CommandFailed(_: Connect) => 
