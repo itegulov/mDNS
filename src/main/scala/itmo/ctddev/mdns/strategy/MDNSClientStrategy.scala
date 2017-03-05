@@ -7,5 +7,6 @@ import akka.actor.ActorRef
   */
 object MDNSClientStrategy extends MDNSNodeStrategy {
   override def accept(message: String, sender: ActorRef): Unit = {
+    println(s"Some message $message")
   }
 }

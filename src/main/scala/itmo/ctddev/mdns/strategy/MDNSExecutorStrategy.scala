@@ -1,6 +1,9 @@
 package itmo.ctddev.mdns.strategy
 
+import java.net.InetSocketAddress
+
 import akka.actor.{Actor, ActorContext, ActorLogging, ActorRef, ActorSystem, Props}
+import akka.io.{IO, Udp}
 import akka.io.Tcp.Write
 import akka.util.ByteString
 
@@ -9,7 +12,12 @@ import scala.collection.mutable
 /**
   * Created by itegulov.
   */
-case class MDNSExecutorStrategy(n: Int = 10)(implicit system: ActorSystem) extends MDNSNodeStrategy {
+case class MDNSExecutorStrategy(
+  name: String,
+  n: Int = 10,
+  group: String = "224.0.0.251",
+  port: Int = 5353
+)(implicit system: ActorSystem) extends MDNSNodeStrategy {
   private val executeMessage = """execute\s+(.*)""".r
   private val schedulerActor = system.actorOf(Props(SchedulerActor()))
 
@@ -28,24 +36,39 @@ case class MDNSExecutorStrategy(n: Int = 10)(implicit system: ActorSystem) exten
 
   case class SchedulerActor() extends Actor with ActorLogging {
     private val executors = mutable.Queue.empty[ActorRef]
+    private val udpManager = IO(Udp)
+
+    udpManager ! Udp.SimpleSender
 
     for (_ <- 1 to n) {
       executors += context.actorOf(Props(ExecutorActor()))
     }
 
     override def receive: Receive = {
+      case Udp.SimpleSenderReady =>
+        log.info(s"UdpMulticastSender initiated.")
+        sender ! Udp.Send(ByteString(s"free $name ${executors.length}"), new InetSocketAddress(group, port))
+        context.become(ready(sender()))
+        log.info(s"Sending UDP-multicast message with free info.")
+    }
+
+    def ready(udpSend: ActorRef): Receive = {
       case task: Task =>
         executors.headOption match {
           case Some(executor) =>
             log.info("Submitting task to executor.")
             executor ! task
             executors.dequeue()
+            udpSend ! Udp.Send(ByteString(s"free $name ${executors.length}"), new InetSocketAddress(group, port))
+            log.info(s"Sending UDP-multicast message with free info.")
           case None =>
             log.info("No available executors.")
             task.submitter ! Write(ByteString("not executed"))
         }
       case Finished(executor) =>
         executors.enqueue(executor)
+        udpSend ! Udp.Send(ByteString(s"free $name ${executors.length}"), new InetSocketAddress(group, port))
+        log.info(s"Sending UDP-multicast message with free info.")
     }
   }
 

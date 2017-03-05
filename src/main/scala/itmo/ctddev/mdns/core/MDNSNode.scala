@@ -43,7 +43,9 @@ final case class MDNSNode(
 
   private val msg = NewPeerAlive(name, addr)
   private val mdnsCache = m.Map.empty[String, InetSocketAddress]
-  private val protocol = """hey\s+([a-zA-Z]\w*)\s+(\d+\.\d+\.\d+\.\d+):(\d+)""".r
+  private val freeCache = m.Map.empty[String, Int]
+  private val heyProtocol = """hey\s+([a-zA-Z]\w*)\s+(\d+\.\d+\.\d+\.\d+):(\d+)""".r
+  private val freeProtocol = """free\s+([a-zA-Z]\w*)\s+(\d+)""".r
 
   override def receive: Receive = {
     case Tcp.Connected(remote, local) =>
@@ -68,7 +70,7 @@ final case class MDNSNode(
       val msg = data.decodeString(StandardCharsets.UTF_8)
       if (!msg.contains("googlecast")) log.info(s"Received tcp msg: $msg.")
       msg match {
-        case protocol(nodeName, nodeIp, nodePort) =>
+        case heyProtocol(nodeName, nodeIp, nodePort) =>
           log.info(s"Received info about node $nodeName. Updating cache.")
           registerNewPeer(nodeName, new InetSocketAddress(nodeIp, nodePort.toInt))
         case _ =>
@@ -77,9 +79,12 @@ final case class MDNSNode(
     case Udp.Received(data, _) =>
       val msg = data.decodeString(StandardCharsets.UTF_8)
       msg match {
-        case protocol(nodeName, nodeIp, nodePort) =>
+        case heyProtocol(nodeName, nodeIp, nodePort) =>
           log.info(s"Received info about node $nodeName {name: $nodeName, ip: $nodeIp, port: $nodePort}.")
           registerNewPeer(nodeName, new InetSocketAddress(nodeIp, nodePort.toInt))
+        case freeProtocol(freeName, free) =>
+          log.info(s"Free for $freeName is now $free.")
+          freeCache(freeName) = free.toInt
         case _ =>
           log.info(s"Malformed multicast message: $msg. Format is: hey *name* *ip*:*port*.")
       }
