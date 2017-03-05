@@ -12,5 +12,5 @@ import itmo.ctddev.mdns.strategy.MDNSConsumerStrategy
 object ConsumerMain extends App {
   implicit val system = ActorSystem()
 
-  system.actorOf(Props(MDNSNode(MDNSConsumerStrategy(_ => ()), "sugok_consumer", new InetSocketAddress(args(0), args(1).toInt))))
+  system.actorOf(Props(MDNSNode(MDNSConsumerStrategy(println), "sugok_consumer", new InetSocketAddress(args(0), args(1).toInt))))
 }
