@@ -9,6 +9,7 @@ import akka.actor.{Actor, ActorLogging, PoisonPill, Props}
 import akka.io.Inet.SO.ReuseAddress
 import akka.io.{IO, Tcp, Udp}
 import akka.util.ByteString
+import itmo.ctddev.mdns.strategy.MDNSNodeStrategy
 
 import scala.language.postfixOps
 
@@ -16,6 +17,7 @@ import scala.language.postfixOps
   * Created by sugakandrey.
   */
 final case class MDNSNode(
+  strategy: MDNSNodeStrategy,
   name: String,
   addr: InetSocketAddress,
   group: String = "224.0.0.251",
@@ -69,7 +71,7 @@ final case class MDNSNode(
           log.info(s"Received info about node $nodeName. Updating cache.")
           registerNewPeer(nodeName, new InetSocketAddress(nodeIp, nodePort.toInt))
         case _ =>
-          log.info(s"Malformed tcp message: $msg. Format is: hey *name* *ip*:*port*.")
+          strategy.accept(msg, sender)
       }
     case Udp.Received(data, _) =>
       val msg = data.decodeString(StandardCharsets.UTF_8)
