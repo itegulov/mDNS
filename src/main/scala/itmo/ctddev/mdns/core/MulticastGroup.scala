@@ -15,7 +15,7 @@ final case class MulticastGroup(
   override def afterBind(s: DatagramSocket): Unit = {
     val group = InetAddress.getByName(address)
     val networkInterface = NetworkInterface.getByName(interface)
-    s.getChannel.join(group, networkInterface)
-    println(s"${s.getPort} Joined group $group interface $interface")
+    val membership = s.getChannel.join(group, networkInterface)
+    println(s"Joined group $membership")
   }
 }

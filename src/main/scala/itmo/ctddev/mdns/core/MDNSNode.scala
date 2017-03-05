@@ -5,11 +5,10 @@ import java.nio.charset.StandardCharsets
 
 import scala.collection.{mutable => m}
 import scala.concurrent.duration._
-import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props}
-import akka.pattern.ask
+import akka.actor.{Actor, ActorLogging, PoisonPill, Props}
 import akka.io.Inet.SO.ReuseAddress
 import akka.io.{IO, Tcp, Udp}
-import akka.util.{ByteString, Timeout}
+import akka.util.ByteString
 
 import scala.language.postfixOps
 
@@ -24,7 +23,7 @@ final case class MDNSNode(
   interface: String = "en0"
 ) extends Actor with ActorLogging {
 
-  import context.{system, dispatcher}
+  import context.system
 
   private val opts = List(
     InetProtocolFamily,
@@ -35,7 +34,7 @@ final case class MDNSNode(
   private val tcpManager = IO(Tcp)
   private val udpManager = IO(Udp)
 
-  udpManager ! Udp.Bind(self, new InetSocketAddress(port), opts)
+  udpManager ! Udp.Bind(self, new InetSocketAddress(group, port), opts)
   udpManager ! Udp.SimpleSender
   tcpManager ! Tcp.Bind(self, addr)
 
@@ -45,7 +44,7 @@ final case class MDNSNode(
 
   override def receive: Receive = {
     case Tcp.Connected(remote, local) =>
-      log.info(s"incoming tcp connection from $remote.")  
+      log.info(s"incoming tcp connection from $remote.")
       sender ! Tcp.Register(self)
     case Udp.Bound(to) =>
       log.info(s"UDP bound node $name to $to.")
@@ -54,7 +53,6 @@ final case class MDNSNode(
       val msg = NewPeerAlive(name, addr)
       sender ! Udp.Send(ByteString(msg.toString), new InetSocketAddress(group, port))
       log.info(s"Sending UDP-multicase message with self info.")
-//      sender ! PoisonPill
     case Udp.CommandFailed(_: Udp.Bind) =>
       log.error(s"Failed to bind to UDP multicast group.")
       context stop self
@@ -70,7 +68,7 @@ final case class MDNSNode(
         case protocol(nodeName, nodeIp, nodePort) =>
           log.info(s"Received info about node $nodeName. Updating cache.")
           registerNewPeer(nodeName, new InetSocketAddress(nodeIp, nodePort.toInt))
-        case _  =>
+        case _ =>
           log.info(s"Malformed tcp message: $msg. Format is: hey *name* *ip*:*port*.")
       }
     case Udp.Received(data, _) =>
@@ -93,49 +91,59 @@ final case class MDNSNode(
     if (!oldAddr.contains(nodeAddr)) {
       log.info(s"Updating caches.")
       mdnsCache += (nodeName -> nodeAddr)
-      context.actorOf(Props(ConnectivityChecker(nodeName, nodeAddr)))
+      context.actorOf(Props(ConnectivityChecker(msg, nodeName, nodeAddr)))
       log.info(s"New cache state = $mdnsCache")
     }
   }
+}
 
   final case class ConnectivityChecker(
+    msg: NewPeerAlive,
     remoteName: String,
     remoteAddr: InetSocketAddress
   ) extends Actor with ActorLogging {
-
+    import context.{system, dispatcher}
     import Tcp._
+    private val manager = IO(Tcp)
 
-    tcpManager ! Connect(remoteAddr)
+    manager ! Connect(remoteAddr)
 
     private case object Tick
+    private case object Timeout
 
-    system.scheduler.schedule(1 second, 10 seconds, self, Tick)
+    private val timeout = context.system.scheduler.schedule(2 seconds, 10 seconds, self, Timeout)
 
     override def receive: Receive = {
       case Connected(remoteAddress, localAddress) =>
-        context.become(ready(sender))
+        sender ! Register(self)
+        sender ! Write(ByteString(msg.toString))
+        sender ! Close
+        context.become(ready)
       case CommandFailed(_: Connect) =>
-        log.error(s"Failed to connect to remote node $remoteName @ $remoteAddr from node $addr.")
+        log.error(s"Failed to connect to remote node $remoteName @ $remoteAddr.")
         context stop self
     }
+    
+    private[this] var isAlive = true
 
-    private def ready(send: ActorRef): Receive = {
+    private def ready: Receive = {
       case Tick =>
-        import scala.util.{Success, Failure}
-
-        implicit val timeout: Timeout = 10 seconds
-        val response = send ? Write(ByteString(msg.toString))
-        log.info(s"Pinging remote node.")
-        response.onComplete {
-          case Failure(_) =>
-            send ! Close
-//            context.parent ! PeerDied(remoteName)
-            context stop self
-          case Success(s) =>
-            log.info(s"Got response from remote $s.")
-            send ! Close
+        manager ! Connect(remoteAddr)
+      case CommandFailed(_: Connect) => 
+        isAlive = false
+        context.system.scheduler.scheduleOnce(100 millis, self, Tick)
+      case Connected(remoteAddress, localAddress) =>
+        isAlive = true
+        sender ! Close
+      case Timeout => 
+        if (!isAlive) {
+          context.parent ! PeerDied(remoteName)
+          context stop self
         }
+        context.system.scheduler.scheduleOnce(0 millis, self, Tick)
     }
+
+    @scala.throws[Exception](classOf[Exception])
+    override def postStop(): Unit = timeout.cancel()
   }
 
-}
