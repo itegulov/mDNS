@@ -95,7 +95,7 @@ final case class MDNSNode(
       mdnsCache.get(nodeName) match {
         case Some(address) =>
           context.actorOf(Props(MessageSender("consume " + body, address, sender)))
-          log.info(s"Created new MessageSender for sending '$body' to $address.")
+          log.info(s"Created new MessageSender for sending 'consume $body' to $address.")
         case None =>
           log.warning(s"There is no node named $nodeName.")
       }
@@ -104,6 +104,14 @@ final case class MDNSNode(
         case Some(address) =>
           context.actorOf(Props(MessageSender("produce", address, sender)))
           log.info(s"Created new MessageSender for sending 'produce' to $address.")
+        case None =>
+          log.warning(s"There is no node named $nodeName.")
+      }
+    case SendExecutor(nodeName, code) =>
+      mdnsCache.get(nodeName) match {
+        case Some(address) =>
+          context.actorOf(Props(MessageSender("execute " + code, address, sender)))
+          log.info(s"Created new MessageSender for sending 'execute $code' to $address.")
         case None =>
           log.warning(s"There is no node named $nodeName.")
       }
@@ -130,6 +138,7 @@ final case class MessageSender(
   private val manager = IO(Tcp)
   private val consumerAck = """consumer ack""".r
   private val producerAnswer = """producer\s+(.*)""".r
+  private val executedAnswer = """executed\s+(.*)""".r
 
   manager ! Connect(remoteAddr)
 
@@ -150,6 +159,9 @@ final case class MessageSender(
         case producerAnswer(answer) =>
           log.info(s"Producer has produced $answer.")
           requester ! ProducerAnswer(answer)
+        case executedAnswer(result) =>
+          log.info(s"Executor has produced $result.")
+          requester ! ExecutorResult(result.toInt)
         case _ =>
           log.info(s"Unexpected message: $msg.")
       }

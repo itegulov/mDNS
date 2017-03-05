@@ -23,7 +23,7 @@ object ClientMain extends App {
 
   implicit val timeout = Timeout(5 seconds)
   Thread.sleep(10000)
-  val future = clientActor ? SendProducer("sugok_producer")
+  val future = clientActor ? SendExecutor("sugok_executor", "1 2 3 4")
   val answer = Await.result(future, timeout.duration)
   println(answer)
 }
