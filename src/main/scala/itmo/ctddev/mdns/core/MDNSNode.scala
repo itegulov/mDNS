@@ -5,11 +5,10 @@ import java.nio.charset.StandardCharsets
 
 import scala.collection.{mutable => m}
 import scala.concurrent.duration._
-import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill, Props}
-import akka.pattern.ask
+import akka.actor.{Actor, ActorLogging, PoisonPill, Props}
 import akka.io.Inet.SO.ReuseAddress
 import akka.io.{IO, Tcp, Udp}
-import akka.util.{ByteString, Timeout}
+import akka.util.ByteString
 
 import scala.language.postfixOps
 
@@ -54,7 +53,6 @@ final case class MDNSNode(
       val msg = NewPeerAlive(name, addr)
       sender ! Udp.Send(ByteString(msg.toString), new InetSocketAddress(group, port))
       log.info(s"Sending UDP-multicase message with self info.")
-    //      sender ! PoisonPill
     case Udp.CommandFailed(_: Udp.Bind) =>
       log.error(s"Failed to bind to UDP multicast group.")
       context stop self
@@ -113,13 +111,13 @@ final case class MDNSNode(
     private case object Tick
     private case object Timeout
 
+    private val timeout = context.system.scheduler.schedule(2 seconds, 10 seconds, self, Timeout)
 
     override def receive: Receive = {
       case Connected(remoteAddress, localAddress) =>
         sender ! Register(self)
         sender ! Write(ByteString(msg.toString))
         sender ! Close
-        context.system.scheduler.schedule(0 millis, 10 seconds, self, Timeout)
         context.become(ready)
       case CommandFailed(_: Connect) =>
         log.error(s"Failed to connect to remote node $remoteName @ $remoteAddr.")
@@ -144,5 +142,8 @@ final case class MDNSNode(
         }
         context.system.scheduler.scheduleOnce(0 millis, self, Tick)
     }
+
+    @scala.throws[Exception](classOf[Exception])
+    override def postStop(): Unit = timeout.cancel()
   }
 
