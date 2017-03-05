@@ -21,8 +21,9 @@ final case class MDNSNode(
   name: String,
   addr: InetSocketAddress,
   group: String = "224.0.0.251",
+  groupBindingAddress: String = if (System.getProperty("os.name").toLowerCase().startsWith("windows")) "0.0.0.0" else "224.0.0.251",
   port: Int = 5353,
-  interface: String = "en0"
+  interface: String = if (System.getProperty("os.name").toLowerCase().startsWith("windows")) "wlan0" else "en0"
 ) extends Actor with ActorLogging {
 
   import context.system
@@ -36,7 +37,7 @@ final case class MDNSNode(
   private val tcpManager = IO(Tcp)
   private val udpManager = IO(Udp)
 
-  udpManager ! Udp.Bind(self, new InetSocketAddress(group, port), opts)
+  udpManager ! Udp.Bind(self, new InetSocketAddress(groupBindingAddress, port), opts)
   udpManager ! Udp.SimpleSender
   tcpManager ! Tcp.Bind(self, addr)
 
@@ -182,19 +183,19 @@ final case class MessageSender(
         log.error(s"Failed to connect to remote node $remoteName @ $remoteAddr.")
         context stop self
     }
-    
+
     private[this] var isAlive = true
 
     private def ready: Receive = {
       case Tick =>
         manager ! Connect(remoteAddr)
-      case CommandFailed(_: Connect) => 
+      case CommandFailed(_: Connect) =>
         isAlive = false
         context.system.scheduler.scheduleOnce(100 millis, self, Tick)
       case Connected(remoteAddress, localAddress) =>
         isAlive = true
         sender ! Close
-      case Timeout => 
+      case Timeout =>
         if (!isAlive) {
           context.parent ! PeerDied(remoteName)
           context stop self
