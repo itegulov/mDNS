@@ -94,12 +94,13 @@ final case class MDNSNode(
       log.info(s"New cache state = $mdnsCache")
     case ListPeers =>
       log.info("Requesting peers.")
-      sender ! Peers(mdnsCache.toMap)
+      sender ! Peers(mdnsCache.toMap, freeCache.toMap)
       log.info(s"Sent $mdnsCache.")
     case SendConsumer(nodeName, body) =>
       mdnsCache.get(nodeName) match {
         case Some(address) =>
-          context.actorOf(Props(MessageSender("consume " + body, address, sender)))
+          val localSender = sender
+          context.actorOf(Props(MessageSender("consume " + body, address, localSender)))
           log.info(s"Created new MessageSender for sending 'consume $body' to $address.")
         case None =>
           log.warning(s"There is no node named $nodeName.")
@@ -107,7 +108,8 @@ final case class MDNSNode(
     case SendProducer(nodeName) =>
       mdnsCache.get(nodeName) match {
         case Some(address) =>
-          context.actorOf(Props(MessageSender("produce", address, sender)))
+          val localSender = sender
+          context.actorOf(Props(MessageSender("produce", address, localSender)))
           log.info(s"Created new MessageSender for sending 'produce' to $address.")
         case None =>
           log.warning(s"There is no node named $nodeName.")
@@ -115,7 +117,8 @@ final case class MDNSNode(
     case SendExecutor(nodeName, code) =>
       mdnsCache.get(nodeName) match {
         case Some(address) =>
-          context.actorOf(Props(MessageSender("execute " + code, address, sender)))
+          val localSender = sender
+          context.actorOf(Props(MessageSender("execute " + code, address, localSender)))
           log.info(s"Created new MessageSender for sending 'execute $code' to $address.")
         case None =>
           log.warning(s"There is no node named $nodeName.")

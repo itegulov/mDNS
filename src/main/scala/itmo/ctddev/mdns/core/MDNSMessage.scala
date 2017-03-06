@@ -15,7 +15,10 @@ case class PeerDied(name: String) extends MDNSMessage
 
 case object ListPeers extends MDNSMessage
 
-case class Peers(mdnsCache: Map[String, InetSocketAddress]) extends MDNSMessage
+case class Peers(
+  mdnsCache: Map[String, InetSocketAddress],
+  mdnsFree: Map[String, Int]
+) extends MDNSMessage
 
 case class SendConsumer(name: String, body: String) extends MDNSMessage
 
