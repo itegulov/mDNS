@@ -29,6 +29,7 @@ case class MDNSExecutorStrategy(
     override def receive: Receive = {
       case Task(code, submitter) =>
         val result = code.split(" ").map(_.toInt).sum
+        Thread.sleep(3000)
         log.info(s"Executed task and got $result.")
         submitter ! Write(ByteString("executed " + result))
         sender ! Finished(self)

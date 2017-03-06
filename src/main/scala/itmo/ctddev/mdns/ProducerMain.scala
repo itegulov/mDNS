@@ -11,6 +11,11 @@ import itmo.ctddev.mdns.strategy.MDNSProducerStrategy
   */
 object ProducerMain extends App {
   implicit val system = ActorSystem()
+  var times = 0
+  def produceFunction(): String = {
+    times += 1
+    "something" + times
+  }
 
-  system.actorOf(Props(MDNSNode(MDNSProducerStrategy(() => "something"), "sugok_producer", new InetSocketAddress(args(0), args(1).toInt))))
+  system.actorOf(Props(MDNSNode(MDNSProducerStrategy(produceFunction), "sugok_producer", new InetSocketAddress(args(0), args(1).toInt))))
 }
