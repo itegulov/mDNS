@@ -169,7 +169,7 @@ final case class MessageSender(
           requester ! ProducerAnswer(answer)
         case executedAnswer(result) =>
           log.info(s"Executor has produced $result.")
-          requester ! ExecutorResult(result.toInt)
+          requester ! ExecutorResult(result)
         case _ =>
           log.info(s"Unexpected message: $msg.")
       }

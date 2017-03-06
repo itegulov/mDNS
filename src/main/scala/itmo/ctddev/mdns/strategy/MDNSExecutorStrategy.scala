@@ -9,6 +9,7 @@ import akka.util.ByteString
 import scala.concurrent.duration._
 
 import scala.collection.mutable
+import com.twitter.util.Eval
 
 /**
   * Created by itegulov.
@@ -28,8 +29,12 @@ case class MDNSExecutorStrategy(
   case class ExecutorActor() extends Actor with ActorLogging {
     override def receive: Receive = {
       case Task(code, submitter) =>
-        val result = code.split(" ").map(_.toInt).sum
-        Thread.sleep(3000)
+        log.error(code)
+        val result = Eval.apply(code).toString
+        log.error(result)
+
+//        val result = code.split(" ").map(_.toInt).sum
+//        Thread.sleep(3000)
         log.info(s"Executed task and got $result.")
         submitter ! Write(ByteString("executed " + result))
         sender ! Finished(self)

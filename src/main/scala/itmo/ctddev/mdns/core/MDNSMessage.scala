@@ -30,4 +30,4 @@ case class ProducerAnswer(body: String) extends MDNSMessage
 
 case class SendExecutor(name: String, code: String) extends MDNSMessage
 
-case class ExecutorResult(result: Int) extends MDNSMessage
+case class ExecutorResult(result: String) extends MDNSMessage
