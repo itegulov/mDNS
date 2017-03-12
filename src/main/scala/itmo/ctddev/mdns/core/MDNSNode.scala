@@ -3,14 +3,14 @@ package itmo.ctddev.mdns.core
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
 
-import scala.collection.{mutable => m}
-import scala.concurrent.duration._
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.io.Inet.SO.ReuseAddress
 import akka.io.{IO, Tcp, Udp}
 import akka.util.ByteString
 import itmo.ctddev.mdns.strategy.MDNSNodeStrategy
 
+import scala.collection.{mutable => m}
+import scala.concurrent.duration._
 import scala.language.postfixOps
 
 /**
@@ -23,7 +23,7 @@ final case class MDNSNode(
   group: String = "224.0.0.251",
   groupBindingAddress: String = if (System.getProperty("os.name").toLowerCase().startsWith("windows")) "0.0.0.0" else "224.0.0.251",
   port: Int = 5353,
-  interface: String = if (System.getProperty("os.name").toLowerCase().startsWith("windows")) "wlan0" else "en0"
+  interface: String = if (System.getProperty("os.name").toLowerCase().startsWith("windows")) "wlan0" else "wlp3s0"
 ) extends Actor with ActorLogging {
 
   import context.system
@@ -123,6 +123,15 @@ final case class MDNSNode(
         case None =>
           log.warning(s"There is no node named $nodeName.")
       }
+    case SendRedirectExecutor(nodeName, replySender, code) =>
+      mdnsCache.get(nodeName) match {
+        case Some(address) =>
+          val localSender = sender
+          context.actorOf(Props(Redirecter("execute " + code, address, localSender, replySender)))
+          log.info(s"Created new MessageSender for sending 'execute $code' to $address.")
+        case None =>
+          log.warning(s"There is no node named $nodeName.")
+      }
   }
 
   private def registerNewPeer(nodeName: String, nodeAddr: InetSocketAddress): Unit = {
@@ -136,13 +145,47 @@ final case class MDNSNode(
   }
 }
 
+final case class Redirecter(
+  messageBody: String,
+  remoteAddr: InetSocketAddress,
+  requester: ActorRef,
+  replySender: ActorRef
+) extends Actor with ActorLogging {
+  import Tcp._
+  import context.system
+  private val executedAnswer = """executed\s+(.*)""".r
+  private val manager = IO(Tcp)
+
+  manager ! Connect(remoteAddr)
+
+  override def receive: Receive = {
+    case Connected(remoteAddress, localAddress) =>
+      sender ! Register(self)
+      sender ! Write(ByteString(messageBody))
+    case CommandFailed(_: Connect) =>
+      log.error(s"Failed to connect to remote node $remoteAddr.")
+      context stop self
+    case Tcp.Received(data) =>
+      val msg = data.decodeString(StandardCharsets.UTF_8)
+      log.info(s"Received tcp msg: $msg.")
+      msg match {
+        case executedAnswer(result) =>
+          log.info(s"Redirected executor has produced $result.")
+          requester ! RedirectExecutorResult(result, replySender)
+        case _ =>
+          log.info(s"Unexpected message: $msg.")
+      }
+      sender ! Close
+  }
+}
+
 final case class MessageSender(
   messageBody: String,
   remoteAddr: InetSocketAddress,
   requester: ActorRef
 ) extends Actor with ActorLogging {
-  import context.system
   import Tcp._
+  import context.system
   private val manager = IO(Tcp)
   private val consumerAck = """consumer ack""".r
   private val producerAnswer = """producer\s+(.*)""".r
@@ -182,8 +225,8 @@ final case class MessageSender(
     remoteName: String,
     remoteAddr: InetSocketAddress
   ) extends Actor with ActorLogging {
-    import context.{system, dispatcher}
     import Tcp._
+    import context.{dispatcher, system}
     private val manager = IO(Tcp)
 
     manager ! Connect(remoteAddr)

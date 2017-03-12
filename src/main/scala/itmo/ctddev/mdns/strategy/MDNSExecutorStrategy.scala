@@ -5,11 +5,17 @@ import java.net.InetSocketAddress
 import akka.actor.{Actor, ActorLogging, ActorRef, ActorSystem, Props}
 import akka.io.{IO, Udp}
 import akka.io.Tcp.Write
-import akka.util.ByteString
-import scala.concurrent.duration._
+import akka.util.{ByteString, Timeout}
+import akka.pattern.ask
 
+import scala.concurrent.duration._
 import scala.collection.mutable
 import com.twitter.util.Eval
+import itmo.ctddev.mdns.core._
+
+import scala.concurrent.Await
+import scala.language.postfixOps
+import scala.util.Random
 
 /**
   * Created by itegulov.
@@ -32,9 +38,6 @@ case class MDNSExecutorStrategy(
         log.error(code)
         val result = Eval.apply(code).toString
         log.error(result)
-
-//        val result = code.split(" ").map(_.toInt).sum
-//        Thread.sleep(3000)
         log.info(s"Executed task and got $result.")
         submitter ! Write(ByteString("executed " + result))
         sender ! Finished(self)
@@ -56,6 +59,8 @@ case class MDNSExecutorStrategy(
 
     private val timeout = context.system.scheduler.schedule(1 seconds, 5 seconds, self, Tick)
 
+    private implicit val t = Timeout(5 seconds)
+
     override def receive: Receive = {
       case Udp.SimpleSenderReady =>
         log.info(s"UdpMulticastSender initiated.")
@@ -66,16 +71,28 @@ case class MDNSExecutorStrategy(
 
     def ready(udpSend: ActorRef): Receive = {
       case task: Task =>
-        executors.headOption match {
-          case Some(executor) =>
-            log.info("Submitting task to executor.")
-            executor ! task
-            executors.dequeue()
-            udpSend ! Udp.Send(ByteString(s"free $name ${executors.length}"), new InetSocketAddress(group, port))
-            log.info(s"Sending UDP-multicast message with free info.")
-          case None =>
-            log.info("No available executors.")
-            task.submitter ! Write(ByteString("not executed"))
+        if (Random.nextInt(10) == 0) {
+          executors.headOption match {
+            case Some(executor) =>
+              log.info("Submitting task to executor.")
+              executor ! task
+              executors.dequeue()
+              udpSend ! Udp.Send(ByteString(s"free $name ${executors.length}"), new InetSocketAddress(group, port))
+              log.info(s"Sending UDP-multicast message with free info.")
+            case None =>
+              log.info("No available executors.")
+              task.submitter ! Write(ByteString("not executed"))
+          }
+        } else {
+          val future = context.actorSelection("/user/mainActor") ? ListPeers
+          val Peers(_, mdnsFree) = Await.result(future, Duration.Inf)
+          mdnsFree.find { case (otherName, free) => otherName != name && free != 0 } match {
+            case Some((otherName, _)) =>
+              log.info(s"Couldn't execute code. Redirecting to $otherName")
+              context.actorSelection("/user/mainActor") ! SendRedirectExecutor(otherName, task.submitter, task.code)
+            case None =>
+              task.submitter ! Write(ByteString("not executed"))
+          }
         }
       case Finished(executor) =>
         executors.enqueue(executor)
@@ -84,6 +101,8 @@ case class MDNSExecutorStrategy(
       case Tick =>
         udpSend ! Udp.Send(ByteString(s"free $name ${executors.length}"), new InetSocketAddress(group, port))
         log.info("Sending UDP-multicast message with free info on timeout.")
+      case RedirectExecutorResult(result, replySender) =>
+        replySender ! Write(ByteString("executed " + result))
     }
   }
 

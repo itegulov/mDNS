@@ -2,6 +2,8 @@ package itmo.ctddev.mdns.core
 
 import java.net.InetSocketAddress
 
+import akka.actor.ActorRef
+
 /**
   * Created by sugakandrey.
   */
@@ -31,3 +33,7 @@ case class ProducerAnswer(body: String) extends MDNSMessage
 case class SendExecutor(name: String, code: String) extends MDNSMessage
 
 case class ExecutorResult(result: String) extends MDNSMessage
+
+case class SendRedirectExecutor(name: String, sender: ActorRef, code: String) extends MDNSMessage
+
+case class RedirectExecutorResult(result: String, sender: ActorRef) extends MDNSMessage
