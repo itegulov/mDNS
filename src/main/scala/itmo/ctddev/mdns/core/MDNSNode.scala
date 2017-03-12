@@ -1,7 +1,8 @@
 package itmo.ctddev.mdns.core
 
-import java.net.InetSocketAddress
+import java.net.{InetSocketAddress, NetworkInterface}
 import java.nio.charset.StandardCharsets
+import java.util.Collections
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.io.Inet.SO.ReuseAddress
@@ -17,13 +18,13 @@ import scala.language.postfixOps
   * Created by sugakandrey.
   */
 final case class MDNSNode(
+  networkInterface: NetworkInterface,
   strategy: MDNSNodeStrategy,
   name: String,
   addr: InetSocketAddress,
   group: String = "224.0.0.251",
-  groupBindingAddress: String = if (System.getProperty("os.name").toLowerCase().startsWith("windows")) "0.0.0.0" else "224.0.0.251",
   port: Int = 5353,
-  interface: String = if (System.getProperty("os.name").toLowerCase().startsWith("windows")) "wlan0" else "wlp3s0"
+  groupBindingAddress: String = if (System.getProperty("os.name").toLowerCase().startsWith("windows")) "0.0.0.0" else "224.0.0.251"
 ) extends Actor with ActorLogging {
 
   import context.system
@@ -31,7 +32,7 @@ final case class MDNSNode(
   private val opts = List(
     InetProtocolFamily,
     ReuseAddress(true),
-    MulticastGroup(group, interface)
+    MulticastGroup(group, networkInterface)
   )
 
   private val tcpManager = IO(Tcp)
@@ -44,8 +45,8 @@ final case class MDNSNode(
   private val msg = NewPeerAlive(name, addr)
   private val mdnsCache = m.Map.empty[String, InetSocketAddress]
   private val freeCache = m.Map.empty[String, Int]
-  private val heyProtocol = """hey\s+([a-zA-Z]\w*)\s+(\d+\.\d+\.\d+\.\d+):(\d+)""".r
-  private val freeProtocol = """free\s+([a-zA-Z]\w*)\s+(\d+)""".r
+  private val heyProtocol = """hey\s+([a-zA-ZА-Яа-я0-9_]+)\s+(\d+\.\d+\.\d+\.\d+):(\d+)""".r
+  private val freeProtocol = """free\s+([a-zA-ZА-Яа-я0-9_]+)\s+(\d+)""".r
 
   override def receive: Receive = {
     case Tcp.Connected(remote, local) =>

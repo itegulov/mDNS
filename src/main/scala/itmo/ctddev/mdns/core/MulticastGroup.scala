@@ -9,12 +9,11 @@ import akka.io.Inet.SocketOptionV2
   */
 final case class MulticastGroup(
   address: String, 
-  interface: String
+  networkInterface: NetworkInterface
 ) extends SocketOptionV2 {
-  
+
   override def afterBind(s: DatagramSocket): Unit = {
     val group = InetAddress.getByName(address)
-    val networkInterface = NetworkInterface.getByName(interface)
     val membership = s.getChannel.join(group, networkInterface)
     println(s"Joined group $membership")
   }

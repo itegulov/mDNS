@@ -9,6 +9,7 @@ import akka.util.{ByteString, Timeout}
 import akka.pattern.ask
 
 import scala.concurrent.duration._
+
 import scala.collection.mutable
 import com.twitter.util.Eval
 import itmo.ctddev.mdns.core._

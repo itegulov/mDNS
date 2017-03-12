@@ -3,16 +3,16 @@ package itmo.ctddev.mdns
 import java.net._
 
 import akka.actor.{ActorSystem, Props}
-import akka.event.Logging
 import akka.event.Logging.LogLevel
 import akka.pattern.ask
 import akka.util.Timeout
-
-import scala.concurrent.duration._
+import itmo.ctddev.mdns.ExecutorMain.args
 import itmo.ctddev.mdns.core._
 import itmo.ctddev.mdns.strategy.MDNSClientStrategy
+import itmo.ctddev.mdns.utils.Utils
 
 import scala.concurrent.Await
+import scala.concurrent.duration._
 import scala.io.StdIn
 import scala.language.postfixOps
 
@@ -22,14 +22,27 @@ import scala.language.postfixOps
 object ClientMain extends App {
   val help = "help".r
   val ls = "ls".r
-  val sendConsumer = """send\s+consumer\s+([a-zA-Z]\w*)\s+(.*)""".r
-  val sendProducer = """send\s+producer\s+([a-zA-Z]\w*)""".r
-  val sendExecutor = """send\s+executor\s+([a-zA-Z]\w*)\s+(.*)""".r
+  val sendConsumer = """send\s+consumer\s+([a-zA-ZА-Яа-я0-9_]+)\s+(.*)""".r
+  val sendProducer = """send\s+producer\s+([a-zA-ZА-Яа-я0-9_]+)""".r
+  val sendExecutor = """send\s+executor\s+([a-zA-ZА-Яа-я0-9_]+)\s+(.*)""".r
+  val networkInterface = Utils.getInterface
   implicit val system = ActorSystem()
   system.eventStream.setLogLevel(LogLevel(0))
 
-  val clientActor = system.actorOf(Props(MDNSNode(MDNSClientStrategy, "sugok_client", new InetSocketAddress(args(0), args(1).toInt))))
-  implicit val timeout = Timeout(5 seconds)
+  val inetSocketAddress = Utils.getInetSocketAddress(args)
+  private val name = System.getProperty("user.name") + "_client" + inetSocketAddress.getPort
+
+  val clientActor = system.actorOf(
+    Props(
+      MDNSNode(
+        networkInterface,
+        MDNSClientStrategy,
+        name,
+        inetSocketAddress
+      )
+    )
+  )
+  implicit val timeout = Timeout(20 seconds)
   while (true) {
     print("> ")
     val command = StdIn.readLine()
