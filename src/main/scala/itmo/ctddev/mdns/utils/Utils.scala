@@ -11,7 +11,7 @@ object Utils {
     import collection.JavaConverters._
     Collections.list(NetworkInterface.getNetworkInterfaces)
       .asScala
-      .filter(_.getDisplayName.toLowerCase.contains("wireless"))
+      .filter(x => x.getDisplayName.toLowerCase.contains("wireless") || x.getName.toLowerCase.startsWith("wl"))
       .find(x => x.isUp && !x.isVirtual && !x.isLoopback && x.supportsMulticast)
       .getOrElse(throw new IllegalStateException("Couldn't find proper network interface"))
   }
